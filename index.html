@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda de Masajes</title>
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --accent: #27ae60;
+      --bg: #f4f7f6;
+      --card: #ffffff;
+      --text: #333333;
+      --border: #dddddd;
+      --slot-empty: #e8f8f5;
+      --slot-booked: #fadbd8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 900px; background: var(--card); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 10px; }
+    h1 { color: var(--primary); font-size: 1.5rem; }
+    select { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.9rem; background: white; cursor: pointer; }
+
+    .calendar-section { margin-bottom: 25px; }
+    .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .calendar-header button { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+    .calendar-header button:hover { opacity: 0.9; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+    .day-name { font-weight: bold; padding: 8px 0; color: var(--primary); background: #eee; border-radius: 4px; font-size: 0.85rem; }
+    .day-cell { padding: 12px 0; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.2s; min-height: 45px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .day-cell:hover { background: #e0e0e0; }
+    .day-cell.selected { background: var(--primary); color: white; font-weight: bold; }
+    .day-cell.has-appointments::after { content: ''; width: 6px; height: 6px; background-color: var(--accent); border-radius: 50%; position: absolute; bottom: 4px; }
+    .day-cell.empty { border: none; cursor: default; }
+
+    .schedule-section h2 { margin-bottom: 15px; color: var(--primary); font-size: 1.2rem; border-bottom: 2px solid var(--bg); padding-bottom: 8px; }
+    .slots-container { display: flex; flex-direction: column; gap: 10px; }
+    .slot { display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--slot-empty); flex-wrap: wrap; gap: 10px; }
+    .slot.booked { background: var(--slot-booked); border-color: #f5b7b1; }
+    .slot-time { font-weight: bold; width: 110px; color: var(--primary); }
+    .slot-details { flex-grow: 1; display: flex; gap: 10px; }
+    .slot-details input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+    .slot-actions button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+    .btn-save { background: var(--accent); color: white; }
+    .btn-delete { background: #e74c3c; color: white; }
+    .slot-actions button:hover { opacity: 0.85; }
+
+    @media (max-width: 600px) {
+      .slot { flex-direction: column; align-items: stretch; }
+      .slot-time { text-align: center; width: 100%; }
+      .slot-actions { display: flex; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1 id="app-title">Agenda de Masajes</h1>
+      <select id="lang-select">
+        <option value="es">Español</option>
+        <option value="en">English</option>
+        <option value="sv">Svenska</option>
+      </select>
+    </header>
+
+    <div class="calendar-section">
+      <div class="calendar-header">
+        <button id="prev-month">&lt;</button>
+        <h2 id="month-year-display"></h2>
+        <button id="next-month">&gt;</button>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+
+    <div class="schedule-section">
+      <h2 id="selected-date-title">Citas</h2>
+      <div class="slots-container" id="slots-container"></div>
+    </div>
+  </div>
+
+  <script>
+    const translations = {
+      es: {
+        title: "Agenda de Masajes",
+        days: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+        months: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        selectedDatePrefix: "Citas para el ",
+        placeholderName: "Nombre del cliente y notas...",
+        btnSave: "Guardar",
+        btnDelete: "Borrar"
+      },
+      en: {
+        title: "Massage Appointment Book",
+        days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+        selectedDatePrefix: "Appointments for ",
+        placeholderName: "Client name and notes...",
+        btnSave: "Save",
+        btnDelete: "Clear"
+      },
+      sv: {
+        title: "Massagebokning",
+        days: ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"],
+        months: ["Januari", "Februari", "Mars", "April", "Maj", "Juni", "Juli", "Augusti", "September", "Oktober", "November", "December"],
+        selectedDatePrefix: "Bokningar för ",
+        placeholderName: "Kundens namn och anteckningar...",
+        btnSave: "Spara",
+        btnDelete: "Radera"
+      }
+    };
+
+    const hours = [
+      "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
+      "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
+      "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00", "19:00 - 20:00", "20:00 - 21:00"
+    ];
+
+    let currentLang = localStorage.getItem('massage_app_lang') || 'es';
+    let currentDate = new Date();
+    let selectedDateStr = formatDateKey(new Date());
+
+    const langSelect = document.getElementById('lang-select');
+    const appTitle = document.getElementById('app-title');
+    const monthYearDisplay = document.getElementById('month-year-display');
+    const calendarGrid = document.getElementById('calendar-grid');
+    const selectedDateTitle = document.getElementById('selected-date-title');
+    const slotsContainer = document.getElementById('slots-container');
+
+    langSelect.value = currentLang;
+
+    langSelect.addEventListener('change', (e) => {
+      currentLang = e.target.value;
+      localStorage.setItem('massage_app_lang', currentLang);
+      renderApp();
+    });
+
+    document.getElementById('prev-month').addEventListener('click', () => {
+      currentDate.setMonth(currentDate.getMonth() - 1);
+      renderCalendar();
+    });
+
+    document.getElementById('next-month').addEventListener('click', () => {
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      renderCalendar();
+    });
+
+    function formatDateKey(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getAppointments() {
+      return JSON.parse(localStorage.getItem('massage_app_data')) || {};
+    }
+
+    function saveAppointments(data) {
+      localStorage.setItem('massage_app_data', JSON.stringify(data));
+    }
+
+    function renderApp() {
+      const t = translations[currentLang];
+      appTitle.textContent = t.title;
+      renderCalendar();
+      renderSlots();
+    }
+
+    function renderCalendar() {
+      const t = translations[currentLang];
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      monthYearDisplay.textContent = `${t.months[month]} ${year}`;
+      calendarGrid.innerHTML = '';
+
+      t.days.forEach(day => {
+        const header = document.createElement('div');
+        header.className = 'day-name';
+        header.textContent = day;
+        calendarGrid.appendChild(header);
+      });
+
+      const firstDayOfMonth = new Date(year, month, 1);
+      let startingDay = firstDayOfMonth.getDay() - 1;
+      if (startingDay === -1) startingDay = 6;
+
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let i = 0; i < startingDay; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'day-cell empty';
+        calendarGrid.appendChild(emptyCell);
+      }
+
+      const allData = getAppointments();
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        cell.textContent = day;
+
+        const cellDate = new Date(year, month, day);
+        const dateStr = formatDateKey(cellDate);
+
+        if (dateStr === selectedDateStr) {
+          cell.classList.add('selected');
+        }
+
+        if (allData[dateStr] && Object.values(allData[dateStr]).some(val => val.trim() !== '')) {
+          cell.classList.add('has-appointments');
+        }
+
+        cell.addEventListener('click', () => {
+          selectedDateStr = dateStr;
+          renderCalendar();
+          renderSlots();
+        });
+
+        calendarGrid.appendChild(cell);
+      }
+    }
+
+    function renderSlots() {
+      const t = translations[currentLang];
+      selectedDateTitle.textContent = `${t.selectedDatePrefix}${selectedDateStr}`;
+      slotsContainer.innerHTML = '';
+
+      const allData = getAppointments();
+      const dayData = allData[selectedDateStr] || {};
+
+      hours.forEach(hour => {
+        const slotValue = dayData[hour] || '';
+        const isBooked = slotValue.trim() !== '';
+
+        const slotEl = document.createElement('div');
+        slotEl.className = `slot ${isBooked ? 'booked' : ''}`;
+
+        slotEl.innerHTML = `
+          <div class="slot-time">${hour}</div>
+          <div class="slot-details">
+            <input type="text" id="input-${hour}" placeholder="${t.placeholderName}" value="${slotValue}">
+          </div>
+          <div class="slot-actions">
+            <button class="btn-save" onclick="saveSlot('${hour}')">${t.btnSave}</button>
+            ${isBooked ? `<button class="btn-delete" onclick="deleteSlot('${hour}')">${t.btnDelete}</button>` : ''}
+          </div>
+        `;
+
+        slotsContainer.appendChild(slotEl);
+      });
+    }
+
+    window.saveSlot = function(hour) {
+      const input = document.getElementById(`input-${hour}`);
+      const val = input.value.trim();
+
+      const allData = getAppointments();
+      if (!allData[selectedDateStr]) {
+        allData[selectedDateStr] = {};
+      }
+
+      if (val !== '') {
+        allData[selectedDateStr][hour] = val;
+      } else {
+        delete allData[selectedDateStr][hour];
+      }
+
+      saveAppointments(allData);
+      renderCalendar();
+      renderSlots();
+    };
+
+    window.deleteSlot = function(hour) {
+      const allData = getAppointments();
+      if (allData[selectedDateStr] && allData[selectedDateStr][hour]) {
+        delete allData[selectedDateStr][hour];
+        saveAppointments(allData);
+        renderCalendar();
+        renderSlots();
+      }
+    };
+
+    renderApp();
+  </script>
+</body>
+</html>
